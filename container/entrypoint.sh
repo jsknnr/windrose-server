@@ -316,7 +316,9 @@ apply_server_desc() {
     changed=1
   fi
 
-  (( changed )) && log INFO "Applied ServerDescription overrides"
+  if (( changed )); then
+    log INFO "Applied ServerDescription overrides"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -388,7 +390,9 @@ apply_world_desc() {
     changed=1
   fi
 
-  (( changed )) && log INFO "Applied WorldDescription overrides"
+  if (( changed )); then
+    log INFO "Applied WorldDescription overrides"
+  fi
 }
 
 # ---------------------------------------------------------------------------
