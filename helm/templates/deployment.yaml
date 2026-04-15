@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "windrose-server.fullname" . }}
+  labels:
+    {{- include "windrose-server.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # PVC access mode is typically ReadWriteOnce and the game server is a
+  # singleton — Recreate prevents two pods from fighting over the same volume
+  # during a rollout.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "windrose-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "windrose-server.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "windrose-server.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: windrose
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            {{- if .Values.windrose.skipConfig }}
+            - name: SKIP_CONFIG
+              value: "true"
+            {{- end }}
+
+            {{/* ServerDescription overrides */}}
+            {{- include "windrose-server.stringEnv" (list "WINDROSE_SERVER_NAME"       .Values.windrose.server.name)             | nindent 12 }}
+            {{- include "windrose-server.stringEnv" (list "WINDROSE_INVITE_CODE"       .Values.windrose.server.inviteCode)       | nindent 12 }}
+            {{- include "windrose-server.stringEnv" (list "WINDROSE_MAX_PLAYERS"       .Values.windrose.server.maxPlayers)       | nindent 12 }}
+            {{- include "windrose-server.stringEnv" (list "WINDROSE_P2P_PROXY_ADDRESS" .Values.windrose.server.p2pProxyAddress)  | nindent 12 }}
+
+            {{- $pw := .Values.windrose.server.password }}
+            {{- if or $pw.value $pw.existingSecret }}
+            - name: WINDROSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "windrose-server.passwordSecretName" . }}
+                  key: {{ $pw.secretKey | default "password" }}
+            {{- end }}
+
+            {{/* WorldDescription overrides */}}
+            {{- include "windrose-server.stringEnv"   (list "WINDROSE_WORLD_NAME"                              .Values.windrose.world.name)                            | nindent 12 }}
+            {{- include "windrose-server.stringEnv"   (list "WINDROSE_WORLD_PRESET"                            .Values.windrose.world.preset)                          | nindent 12 }}
+            {{- include "windrose-server.explicitEnv" (list "WINDROSE_WORLD_COOP_QUESTS"                       .Values.windrose.world.coopQuests)                      | nindent 12 }}
+            {{- include "windrose-server.explicitEnv" (list "WINDROSE_WORLD_EASY_EXPLORE"                      .Values.windrose.world.easyExplore)                     | nindent 12 }}
+            {{- include "windrose-server.stringEnv"   (list "WINDROSE_WORLD_MOB_HEALTH_MULTIPLIER"             .Values.windrose.world.mobHealthMultiplier)             | nindent 12 }}
+            {{- include "windrose-server.stringEnv"   (list "WINDROSE_WORLD_MOB_DAMAGE_MULTIPLIER"             .Values.windrose.world.mobDamageMultiplier)             | nindent 12 }}
+            {{- include "windrose-server.stringEnv"   (list "WINDROSE_WORLD_SHIP_HEALTH_MULTIPLIER"            .Values.windrose.world.shipHealthMultiplier)            | nindent 12 }}
+            {{- include "windrose-server.stringEnv"   (list "WINDROSE_WORLD_SHIP_DAMAGE_MULTIPLIER"            .Values.windrose.world.shipDamageMultiplier)            | nindent 12 }}
+            {{- include "windrose-server.stringEnv"   (list "WINDROSE_WORLD_BOARDING_DIFFICULTY_MULTIPLIER"    .Values.windrose.world.boardingDifficultyMultiplier)    | nindent 12 }}
+            {{- include "windrose-server.stringEnv"   (list "WINDROSE_WORLD_COOP_STATS_CORRECTION_MODIFIER"    .Values.windrose.world.coopStatsCorrectionModifier)     | nindent 12 }}
+            {{- include "windrose-server.stringEnv"   (list "WINDROSE_WORLD_COOP_SHIP_STATS_CORRECTION_MODIFIER" .Values.windrose.world.coopShipStatsCorrectionModifier) | nindent 12 }}
+            {{- include "windrose-server.stringEnv"   (list "WINDROSE_WORLD_COMBAT_DIFFICULTY"                 .Values.windrose.world.combatDifficulty)                | nindent 12 }}
+
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.service.ports }}
+          ports:
+            {{- range . }}
+            - name: {{ .name }}
+              containerPort: {{ .targetPort | default .port }}
+              protocol: {{ .protocol | default "TCP" }}
+            {{- end }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+          {{- end }}
+      {{- if .Values.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "windrose-server.pvcName" . }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

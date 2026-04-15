@@ -1,0 +1,52 @@
+FROM debian:12-slim
+
+ARG CONTAINER_GID=10000
+ARG CONTAINER_UID=10000
+
+ENV DEBIAN_FRONTEND="noninteractive"
+ENV STEAM_APP_ID="4129620"
+ENV HOME="/home/steam"
+ENV WINDROSE_PATH="/home/steam/windrose"
+ENV STEAMCMD_PATH="/home/steam/steamcmd"
+ENV WINEPREFIX="/home/steam/.wine"
+ENV WINEARCH="win64"
+
+RUN groupadd -g $CONTAINER_GID steam \
+    && useradd -g $CONTAINER_GID -u $CONTAINER_UID -m steam \
+    && dpkg --add-architecture i386 \
+    && apt-get update \
+    && apt-get install --no-install-recommends -y \
+        ca-certificates \
+        dbus \
+        xvfb \
+        xauth \
+        wine \
+        wine64 \
+        wine32 \
+        curl \
+        jq \
+        locales \
+        lib32gcc-s1 \
+    && echo 'LANG="en_US.UTF-8"' > /etc/default/locale \
+    && echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen \
+    && locale-gen \
+    && rm -f /etc/machine-id \
+    && dbus-uuidgen --ensure=/etc/machine-id \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean \
+    && apt-get autoremove -y 
+
+USER steam
+
+RUN mkdir "$WINDROSE_PATH" \
+    && mkdir -p "${STEAMCMD_PATH}" \
+    && curl -sqL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar zxvf - -C ${STEAMCMD_PATH} \
+    && chmod +x ${STEAMCMD_PATH}/steamcmd.sh \
+    && ${STEAMCMD_PATH}/steamcmd.sh +login anonymous +quit \
+    && mkdir -p "${WINEPREFIX}"
+    
+COPY entrypoint.sh /home/steam/entrypoint.sh
+
+WORKDIR /home/steam
+
+CMD ["/home/steam/entrypoint.sh"]

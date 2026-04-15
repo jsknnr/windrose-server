@@ -1,0 +1,136 @@
+# Default values for windrose-server.
+
+replicaCount: 1
+
+image:
+  repository: docker.io/sknnr/windrose-server
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# StorageClass sizing for the persistent volume holding the game install,
+# wine prefix, generated configs, and world saves.
+persistence:
+  enabled: true
+  # If false, a volume named existingClaim is used; otherwise a PVC is created.
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 40Gi
+  annotations: {}
+  # Mount path inside the container. Must match WINDROSE_PATH from the image.
+  mountPath: /home/steam/windrose
+
+# The Windrose binary ships as a Windows executable. No game ports are
+# documented publicly — the server advertises via an invite code through a
+# P2P relay. Leave the Service disabled unless your environment requires it,
+# in which case fill in `ports` with whatever your deployment exposes.
+service:
+  enabled: false
+  type: ClusterIP          # ClusterIP | NodePort | LoadBalancer
+  annotations: {}
+  loadBalancerIP: ""
+  externalTrafficPolicy: ""
+  ports: []
+  # Example:
+  # ports:
+  #   - name: game
+  #     port: 7777
+  #     targetPort: 7777
+  #     protocol: UDP
+
+# Requests/limits — defaults follow the "4 players" tier from the vendor's
+# hardware guidance. Bump for larger worlds.
+resources:
+  requests:
+    cpu: "2"
+    memory: 12Gi
+  limits:
+    cpu: "4"
+    memory: 16Gi
+
+# Extra raw env entries merged into the container env list. Useful for things
+# like XVFB_RESOLUTION or BOOTSTRAP_TIMEOUT_SECS that don't have a first-class
+# field below.
+extraEnv: []
+# - name: XVFB_RESOLUTION
+#   value: 1280x720x24
+
+# Container runs as this UID/GID (baked into the image). fsGroup ensures the
+# mounted PVC is writable by the runtime user.
+podSecurityContext:
+  runAsUser: 10000
+  runAsGroup: 10000
+  fsGroup: 10000
+  fsGroupChangePolicy: OnRootMismatch
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+podAnnotations: {}
+podLabels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""
+
+# Termination grace period — the entrypoint forwards SIGTERM to the server
+# process and waits on it, so give the game time to save and shut down cleanly.
+terminationGracePeriodSeconds: 60
+
+# ---------------------------------------------------------------------------
+# Windrose configuration. Any field left blank or null is NOT passed to the
+# container, so the entrypoint leaves that setting alone in the JSON config.
+# See README.md for a full description of each option and its constraints.
+# ---------------------------------------------------------------------------
+windrose:
+  # If true, the entrypoint will not mutate the JSON config files, and will
+  # fail at startup if ServerDescription.json or WorldDescription.json is
+  # missing. Use this when you manage the configs by hand on the PVC.
+  skipConfig: false
+
+  server:
+    name: ""                # WINDROSE_SERVER_NAME — free-form display name
+    inviteCode: ""          # WINDROSE_INVITE_CODE — >=6 chars, [0-9a-zA-Z]
+    maxPlayers: null        # WINDROSE_MAX_PLAYERS — integer
+    p2pProxyAddress: ""     # WINDROSE_P2P_PROXY_ADDRESS — e.g. 127.0.0.1
+
+    # Password handling. Leave both fields empty/unset to leave the existing
+    # password configuration alone. When `password` is set via `value`, it is
+    # rendered into a Secret; use `existingSecret` to point at your own.
+    password:
+      value: ""             # Plain-text password (rendered into a Secret)
+      existingSecret: ""    # Name of a pre-existing Secret
+      secretKey: password   # Key within the Secret holding the password
+
+  world:
+    name: ""                # WINDROSE_WORLD_NAME
+    preset: ""              # "" | Easy | Medium | Hard | Custom
+
+    # Set any of the below to trigger the server to treat the preset as Custom.
+    # Use `null` (default) to leave the value untouched.
+    coopQuests: null                         # bool  — default true
+    easyExplore: null                        # bool  — default false
+    mobHealthMultiplier: null                # float — [0.2, 5.0]
+    mobDamageMultiplier: null                # float — [0.2, 5.0]
+    shipHealthMultiplier: null               # float — [0.4, 5.0]
+    shipDamageMultiplier: null               # float — [0.2, 2.5]
+    boardingDifficultyMultiplier: null       # float — [0.2, 5.0]
+    coopStatsCorrectionModifier: null        # float — [0.0, 2.0]
+    coopShipStatsCorrectionModifier: null    # float — [0.0, 2.0]
+    combatDifficulty: ""                     # "" | Easy | Normal | Hard
