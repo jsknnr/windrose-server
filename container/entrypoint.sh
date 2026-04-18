@@ -42,7 +42,7 @@ require_env STEAM_APP_ID
 require_env WINEPREFIX
 
 readonly STEAMCMD_BIN="${STEAMCMD_PATH}/steamcmd.sh"
-readonly STEAM_MANIFEST_DIR="${STEAMCMD_PATH}/steamapps"
+readonly STEAM_MANIFEST_DIR="${WINDROSE_PATH}/steamapps"
 
 readonly R5_DIR="${WINDROSE_PATH}/R5"
 readonly SERVER_BIN="${R5_DIR}/Binaries/Win64/WindroseServer-Win64-Shipping.exe"
