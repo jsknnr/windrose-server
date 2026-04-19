@@ -30,10 +30,11 @@ persistence:
   # Mount path inside the container. Must match WINDROSE_PATH from the image.
   mountPath: /home/steam/windrose
 
-# The Windrose binary ships as a Windows executable. No game ports are
-# documented publicly — the server advertises via an invite code through a
-# P2P relay. Leave the Service disabled unless your environment requires it,
-# in which case fill in `ports` with whatever your deployment exposes.
+# When using the default P2P/ICE relay, no ports need to be exposed and the
+# Service can stay disabled. When direct connection is enabled
+# (windrose.server.useDirectConnection: true), port 7777 (or your chosen
+# directConnectionPort) must be reachable over both TCP and UDP — enable the
+# Service and configure `ports` accordingly.
 service:
   enabled: false
   type: ClusterIP          # ClusterIP | NodePort | LoadBalancer
@@ -41,9 +42,13 @@ service:
   loadBalancerIP: ""
   externalTrafficPolicy: ""
   ports: []
-  # Example:
+  # Example for direct connection (port 7777 TCP + UDP):
   # ports:
-  #   - name: game
+  #   - name: game-tcp
+  #     port: 7777
+  #     targetPort: 7777
+  #     protocol: TCP
+  #   - name: game-udp
   #     port: 7777
   #     targetPort: 7777
   #     protocol: UDP
@@ -109,6 +114,14 @@ windrose:
     inviteCode: ""          # WINDROSE_INVITE_CODE — >=6 chars, [0-9a-zA-Z]
     maxPlayers: null        # WINDROSE_MAX_PLAYERS — integer
     p2pProxyAddress: ""     # WINDROSE_P2P_PROXY_ADDRESS — e.g. 127.0.0.1
+    region: ""              # WINDROSE_REGION — "" (auto-detect) | SEA | CIS | EU
+
+    # Direct connection settings. When useDirectConnection is true, the server
+    # creates sockets for direct client connections instead of using ICE/P2P.
+    useDirectConnection: false               # WINDROSE_USE_DIRECT_CONNECTION
+    directConnectionAddress: ""              # WINDROSE_DIRECT_CONNECTION_ADDRESS — for future use
+    directConnectionPort: null               # WINDROSE_DIRECT_CONNECTION_PORT — default 7777, needs TCP+UDP
+    directConnectionProxyAddress: ""         # WINDROSE_DIRECT_CONNECTION_PROXY_ADDRESS — default 0.0.0.0
 
     # Password handling. Leave both fields empty/unset to leave the existing
     # password configuration alone. When `password` is set via `value`, it is

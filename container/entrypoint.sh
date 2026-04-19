@@ -316,6 +316,36 @@ apply_server_desc() {
     changed=1
   fi
 
+  if [[ -n "${WINDROSE_REGION+x}" ]]; then
+    json_patch "${file}" '.ServerDescription_Persistent.UserSelectedRegion = $v' \
+      --arg v "${WINDROSE_REGION}"
+    changed=1
+  fi
+
+  if [[ -n "${WINDROSE_USE_DIRECT_CONNECTION+x}" ]]; then
+    json_patch "${file}" '.ServerDescription_Persistent.UseDirectConnection = $v' \
+      --argjson v "$(to_bool_json "${WINDROSE_USE_DIRECT_CONNECTION}")"
+    changed=1
+  fi
+
+  if [[ -n "${WINDROSE_DIRECT_CONNECTION_ADDRESS+x}" ]]; then
+    json_patch "${file}" '.ServerDescription_Persistent.DirectConnectionServerAddress = $v' \
+      --arg v "${WINDROSE_DIRECT_CONNECTION_ADDRESS}"
+    changed=1
+  fi
+
+  if [[ -n "${WINDROSE_DIRECT_CONNECTION_PORT+x}" ]]; then
+    json_patch "${file}" '.ServerDescription_Persistent.DirectConnectionServerPort = $v' \
+      --argjson v "${WINDROSE_DIRECT_CONNECTION_PORT}"
+    changed=1
+  fi
+
+  if [[ -n "${WINDROSE_DIRECT_CONNECTION_PROXY_ADDRESS+x}" ]]; then
+    json_patch "${file}" '.ServerDescription_Persistent.DirectConnectionProxyAddress = $v' \
+      --arg v "${WINDROSE_DIRECT_CONNECTION_PROXY_ADDRESS}"
+    changed=1
+  fi
+
   if (( changed )); then
     log INFO "Applied ServerDescription overrides"
   fi

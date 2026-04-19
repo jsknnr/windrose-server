@@ -71,6 +71,11 @@ Without a volume, SteamCMD will re-download the server on every run and every wo
 | `WINDROSE_PASSWORD` | string | Non-empty value sets `IsPasswordProtected=true`; empty string disables password protection. Leave unset to keep whatever is already in the file. |
 | `WINDROSE_MAX_PLAYERS` | integer | Max simultaneous players. |
 | `WINDROSE_P2P_PROXY_ADDRESS` | string | Listen address for the P2P relay socket (e.g. `127.0.0.1`). |
+| `WINDROSE_REGION` | string | Connection Service region: `SEA`, `CIS`, or `EU` (covers EU & NA). Empty = auto-detect. |
+| `WINDROSE_USE_DIRECT_CONNECTION` | bool | If `true`, the server creates sockets for direct client connections instead of using the ICE/P2P relay. |
+| `WINDROSE_DIRECT_CONNECTION_ADDRESS` | string | Address for direct connection. Reserved for future use. |
+| `WINDROSE_DIRECT_CONNECTION_PORT` | integer | Port for direct connection (default `7777`). Must be reachable over both TCP and UDP when direct connection is enabled. |
+| `WINDROSE_DIRECT_CONNECTION_PROXY_ADDRESS` | string | Bind address for the direct-connection listener (default `0.0.0.0`). Useful for selecting a specific network interface. |
 
 `PersistentServerId` and `WorldIslandId` are intentionally not exposed — the game manages them and the vendor docs warn against editing them.
 

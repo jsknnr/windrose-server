@@ -58,6 +58,16 @@ spec:
             {{- include "windrose-server.stringEnv" (list "WINDROSE_INVITE_CODE"       .Values.windrose.server.inviteCode)       | nindent 12 }}
             {{- include "windrose-server.stringEnv" (list "WINDROSE_MAX_PLAYERS"       .Values.windrose.server.maxPlayers)       | nindent 12 }}
             {{- include "windrose-server.stringEnv" (list "WINDROSE_P2P_PROXY_ADDRESS" .Values.windrose.server.p2pProxyAddress)  | nindent 12 }}
+            {{- include "windrose-server.stringEnv" (list "WINDROSE_REGION"            .Values.windrose.server.region)           | nindent 12 }}
+
+            {{/* Direct connection overrides */}}
+            {{- if .Values.windrose.server.useDirectConnection }}
+            - name: WINDROSE_USE_DIRECT_CONNECTION
+              value: "true"
+            {{- end }}
+            {{- include "windrose-server.stringEnv" (list "WINDROSE_DIRECT_CONNECTION_ADDRESS"       .Values.windrose.server.directConnectionAddress)      | nindent 12 }}
+            {{- include "windrose-server.stringEnv" (list "WINDROSE_DIRECT_CONNECTION_PORT"          .Values.windrose.server.directConnectionPort)         | nindent 12 }}
+            {{- include "windrose-server.stringEnv" (list "WINDROSE_DIRECT_CONNECTION_PROXY_ADDRESS" .Values.windrose.server.directConnectionProxyAddress) | nindent 12 }}
 
             {{- $pw := .Values.windrose.server.password }}
             {{- if or $pw.value $pw.existingSecret }}
