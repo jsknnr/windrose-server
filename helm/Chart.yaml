@@ -2,7 +2,7 @@ apiVersion: v2
 name: windrose-server
 description: Windrose Dedicated Server running under Wine in a Linux container
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "0.10.0"
 kubeVersion: ">=1.24.0-0"
 home: https://github.com/sknnr/windrose-server
