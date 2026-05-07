@@ -2,6 +2,7 @@ FROM debian:12-slim
 
 ARG CONTAINER_GID=10000
 ARG CONTAINER_UID=10000
+ARG WINE_BRANCH=stable
 
 ENV DEBIAN_FRONTEND="noninteractive"
 ENV STEAM_APP_ID="4129620"
@@ -17,13 +18,19 @@ RUN groupadd -g $CONTAINER_GID steam \
     && apt-get update \
     && apt-get install --no-install-recommends -y \
         ca-certificates \
+        curl \
+        gnupg \
+    && install -dm755 /etc/apt/keyrings \
+    && curl -fsSL -o /etc/apt/keyrings/winehq-archive.key \
+        https://dl.winehq.org/wine-builds/winehq.key \
+    && curl -fsSL -o /etc/apt/sources.list.d/winehq-bookworm.sources \
+        https://dl.winehq.org/wine-builds/debian/dists/bookworm/winehq-bookworm.sources \
+    && apt-get update \
+    && apt-get install --no-install-recommends -y \
         dbus \
         xvfb \
         xauth \
-        wine \
-        wine64 \
-        wine32 \
-        curl \
+        winehq-${WINE_BRANCH} \
         jq \
         locales \
         lib32gcc-s1 \
