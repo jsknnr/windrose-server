@@ -14,8 +14,6 @@ set -Eeuo pipefail
 # Logging helpers
 # ---------------------------------------------------------------------------
 
-readonly SCRIPT_NAME="$(basename "$0")"
-
 log() {
   local level=$1
   shift
@@ -46,11 +44,13 @@ readonly STEAM_MANIFEST_DIR="${WINDROSE_PATH}/steamapps"
 
 readonly R5_DIR="${WINDROSE_PATH}/R5"
 readonly SERVER_BIN="${R5_DIR}/Binaries/Win64/WindroseServer-Win64-Shipping.exe"
+readonly SERVER_BIN_NAME="${SERVER_BIN##*/}"
 readonly SERVER_DESC_FILE="${R5_DIR}/ServerDescription.json"
-readonly WORLD_DESC_GLOB="${R5_DIR}/Saved/SaveProfiles/Default/RocksDB/*/Worlds/*/WorldDescription.json"
+readonly WORLD_DESC_GLOB="${R5_DIR}/Saved/SaveProfiles/Default/RocksDB*/*/Worlds/*/WorldDescription.json"
 
-readonly WINE_BIN="$(command -v wine64 || command -v wine || true)"
-readonly WINESERVER_BIN="$(command -v wineserver || true)"
+WINE_BIN="$(command -v wine64 || command -v wine || true)"
+WINESERVER_BIN="$(command -v wineserver || true)"
+readonly WINE_BIN WINESERVER_BIN
 
 readonly XVFB_DISPLAY="${XVFB_DISPLAY:-:0}"
 readonly XVFB_RESOLUTION="${XVFB_RESOLUTION:-1024x768x24}"
@@ -58,45 +58,95 @@ readonly XVFB_RESOLUTION="${XVFB_RESOLUTION:-1024x768x24}"
 readonly SKIP_CONFIG="${SKIP_CONFIG:-false}"
 readonly BOOTSTRAP_TIMEOUT_SECS="${BOOTSTRAP_TIMEOUT_SECS:-300}"
 readonly BOOTSTRAP_SETTLE_SECS="${BOOTSTRAP_SETTLE_SECS:-3}"
+readonly SERVER_STOP_TIMEOUT_SECS="${SERVER_STOP_TIMEOUT_SECS:-30}"
+readonly SERVER_KILL_TIMEOUT_SECS="${SERVER_KILL_TIMEOUT_SECS:-10}"
 
 export WINEDEBUG="${WINEDEBUG:--all}"
 export WINEARCH="${WINEARCH:-win64}"
+export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:-mscoree,mshtml=}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-steam}"
 export WINEPREFIX
 
 # ---------------------------------------------------------------------------
-# Signal handling
+# Process tracking and signal handling
 # ---------------------------------------------------------------------------
 
 SERVER_PID=""
 XVFB_PID=""
 SHUTTING_DOWN=0
 
+server_running() {
+  pgrep -f "${SERVER_BIN_NAME}" >/dev/null 2>&1
+}
+
+reap_server_pid() {
+  if [[ -n "${SERVER_PID}" ]]; then
+    wait "${SERVER_PID}" 2>/dev/null || true
+    SERVER_PID=""
+  fi
+}
+
+# Stop the dedicated server. SIGINT to the wine process is forwarded by Wine
+# as a CTRL_C_EVENT to the attached Windows console, which Unreal handles
+# gracefully. Falls back to wineserver -k and finally SIGKILL on timeout.
+stop_server() {
+  local soft_timeout=${SERVER_STOP_TIMEOUT_SECS}
+  local hard_timeout=${SERVER_KILL_TIMEOUT_SECS}
+
+  if ! server_running; then
+    reap_server_pid
+    return 0
+  fi
+
+  local -a pids
+  mapfile -t pids < <(pgrep -f "${SERVER_BIN_NAME}" 2>/dev/null || true)
+
+  log INFO "Sending SIGINT to ${SERVER_BIN_NAME} (pids: ${pids[*]:-none})"
+  (( ${#pids[@]} > 0 )) && kill -INT "${pids[@]}" 2>/dev/null || true
+
+  local elapsed=0
+  while (( elapsed < soft_timeout )) && server_running; do
+    sleep 1
+    ((elapsed += 1))
+  done
+
+  if server_running; then
+    log WARN "Server did not exit within ${soft_timeout}s; killing wineserver"
+    "${WINESERVER_BIN}" -k >/dev/null 2>&1 || true
+
+    elapsed=0
+    while (( elapsed < hard_timeout )) && server_running; do
+      sleep 1
+      ((elapsed += 1))
+    done
+  fi
+
+  if server_running; then
+    log ERROR "Server still running after wineserver -k; sending SIGKILL"
+    pkill -KILL -f "${SERVER_BIN_NAME}" 2>/dev/null || true
+  fi
+
+  reap_server_pid
+}
+
 shutdown() {
   local signal=$1
 
-  [[ "${SHUTTING_DOWN}" -eq 0 ]] || return
+  (( SHUTTING_DOWN == 0 )) || return
   SHUTTING_DOWN=1
 
-  log INFO "Received ${signal}, forwarding interrupt to Windrose server"
-
-  if [[ -n "${SERVER_PID}" ]] && kill -0 "${SERVER_PID}" 2>/dev/null; then
-    kill -INT "${SERVER_PID}" 2>/dev/null || true
-    wait "${SERVER_PID}" 2>/dev/null || true
-  fi
-
-  if [[ -n "${WINESERVER_BIN}" ]]; then
-    "${WINESERVER_BIN}" -k >/dev/null 2>&1 || true
-  fi
+  log INFO "Received ${signal}, forwarding shutdown to Windrose server"
+  stop_server
 
   if [[ -n "${XVFB_PID}" ]] && kill -0 "${XVFB_PID}" 2>/dev/null; then
     kill "${XVFB_PID}" 2>/dev/null || true
     wait "${XVFB_PID}" 2>/dev/null || true
+    XVFB_PID=""
   fi
 }
 
 on_error() {
-  log ERROR "${SCRIPT_NAME} failed at line $2 with exit code $1"
+  log ERROR "entrypoint.sh failed at line $2 with exit code $1"
 }
 
 trap 'shutdown SIGINT'  INT
@@ -108,11 +158,12 @@ trap 'on_error $? $LINENO' ERR
 # ---------------------------------------------------------------------------
 
 preflight() {
-  [[ -x "${STEAMCMD_BIN}" ]]   || fail "steamcmd not found or not executable: ${STEAMCMD_BIN}"
-  [[ -n "${WINE_BIN}" ]]       || fail "wine was not found in PATH"
-  [[ -n "${WINESERVER_BIN}" ]] || fail "wineserver was not found in PATH"
-  [[ -d "${WINDROSE_PATH}" ]]  || fail "Windrose install directory does not exist: ${WINDROSE_PATH}"
-  command -v jq >/dev/null     || fail "jq was not found in PATH"
+  [[ -x "${STEAMCMD_BIN}" ]]    || fail "steamcmd not found or not executable: ${STEAMCMD_BIN}"
+  [[ -n "${WINE_BIN}" ]]        || fail "wine was not found in PATH"
+  [[ -n "${WINESERVER_BIN}" ]]  || fail "wineserver was not found in PATH"
+  [[ -d "${WINDROSE_PATH}" ]]   || fail "Windrose install directory does not exist: ${WINDROSE_PATH}"
+  command -v jq    >/dev/null   || fail "jq was not found in PATH"
+  command -v pgrep >/dev/null   || fail "pgrep was not found in PATH"
 }
 
 # ---------------------------------------------------------------------------
@@ -140,17 +191,13 @@ update_server() {
 
 wait_for_xvfb() {
   local socket="/tmp/.X11-unix/X${XVFB_DISPLAY#:}"
+  local i
 
   for (( i = 0; i < 50; i++ )); do
     [[ -S "${socket}" ]] && return 0
-
-    if [[ -n "${XVFB_PID}" ]] && ! kill -0 "${XVFB_PID}" 2>/dev/null; then
-      return 1
-    fi
-
+    [[ -n "${XVFB_PID}" ]] && ! kill -0 "${XVFB_PID}" 2>/dev/null && return 1
     sleep 0.1
   done
-
   return 1
 }
 
@@ -188,8 +235,8 @@ ensure_wine_prefix() {
 # Config discovery
 # ---------------------------------------------------------------------------
 
-# Locate the single WorldDescription.json that the server generates under the
-# nested Saved/... tree. Returns 0 and prints the path on success, 1 otherwise.
+# Locate the WorldDescription.json the server generates under Saved/.
+# Prints the path on success.
 find_world_desc() {
   local path
   for path in ${WORLD_DESC_GLOB}; do
@@ -214,6 +261,7 @@ bootstrap_config() {
   SERVER_PID=$!
 
   local elapsed=0
+  local started=0
   while (( elapsed < BOOTSTRAP_TIMEOUT_SECS )); do
     if config_files_exist; then
       log INFO "Default config files detected; waiting ${BOOTSTRAP_SETTLE_SECS}s for writes to settle"
@@ -221,9 +269,12 @@ bootstrap_config() {
       break
     fi
 
-    if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
-      wait "${SERVER_PID}" 2>/dev/null || true
-      SERVER_PID=""
+    # Only treat "not running" as failure once we've actually seen it run,
+    # since pgrep won't match during the first second or two of startup.
+    if server_running; then
+      started=1
+    elif (( started )); then
+      stop_server
       fail "Server exited before generating configuration files"
     fi
 
@@ -232,9 +283,7 @@ bootstrap_config() {
   done
 
   log INFO "Stopping bootstrap server"
-  kill -INT "${SERVER_PID}" 2>/dev/null || true
-  wait "${SERVER_PID}" 2>/dev/null || true
-  SERVER_PID=""
+  stop_server
 
   config_files_exist \
     || fail "Config files did not appear within ${BOOTSTRAP_TIMEOUT_SECS}s"
@@ -458,6 +507,7 @@ run_server() {
 
   local exit_code=0
   wait "${SERVER_PID}" || exit_code=$?
+  SERVER_PID=""
 
   if (( exit_code == 0 )); then
     log INFO "Windrose Dedicated Server exited cleanly"
